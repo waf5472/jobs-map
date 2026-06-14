@@ -1,0 +1,13 @@
+name = "jobs-worker"
+main = "worker.js"
+compatibility_date = "2025-06-01"
+
+# KV cache (results + geocode lookups). Create it, then paste the id below:
+#   npx wrangler kv namespace create JOBS_KV
+[[kv_namespaces]]
+binding = "JOBS_KV"
+id = "PASTE_YOUR_KV_NAMESPACE_ID_HERE"
+
+# Nightly refresh at 07:00 UTC (~2-3am ET). Adjust or remove.
+[triggers]
+crons = ["0 7 * * *"]

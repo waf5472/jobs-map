@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<style>
+/* ── Apple HIG Dark ─────────────────────────────────────────────── */
+:root{
+  --bg:#000;--bg2:#1c1c1e;--bg3:#2c2c2e;
+  --fill:rgba(120,120,128,.2);--fill2:rgba(120,120,128,.16);
+  --sep:rgba(84,84,88,.65);
+  --lbl:#fff;--lbl2:rgba(235,235,245,.6);--lbl3:rgba(235,235,245,.3);
+  --blue:#0a84ff;--orange:#ff9f0a;--red:#ff453a;--green:#30d158;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%}
+body{background:var(--bg);color:var(--lbl);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100vh;width:100vw;overflow:hidden}
+
+/* Nav bar */
+header{padding:12px 16px 10px;border-bottom:1px solid var(--sep);background:rgba(28,28,30,.92);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);display:flex;flex-direction:column;gap:2px}
+h1{font-size:17px;font-weight:600;letter-spacing:-.02em;color:var(--lbl);line-height:1.2}
+.sub{font-size:12px;color:var(--lbl2);letter-spacing:-.01em}.sub b{color:var(--lbl);font-weight:600}
+
+.wrap{display:flex;min-height:0;min-width:0;height:100%}
+#map{flex:1 1 auto;min-width:0;height:100%;background:#000}
+.leaflet-container{background:#000;font-family:inherit;width:100%;height:100%}
+
+/* Sidebar */
+aside{flex:0 0 320px;max-width:48%;background:var(--bg);border-left:1px solid var(--sep);display:flex;flex-direction:column;min-height:0}
+.controls{overflow-y:auto;flex-shrink:0;max-height:62%;border-bottom:1px solid var(--sep)}
+
+/* Grouped sections (iOS Settings pattern) */
+.ctrl-group{padding:16px 16px 0}
+.ctrl-group:last-of-type{padding-bottom:4px}
+.ctrl-group-label{font-size:12px;font-weight:600;color:var(--lbl2);letter-spacing:.01em;text-transform:uppercase;margin-bottom:8px;padding-left:4px}
+.ctrl-group-label .n{color:var(--blue);margin-left:4px}
+.ctrl-card{background:var(--bg2);border-radius:12px;overflow:hidden}
+.ctrl-row{display:flex;align-items:center;gap:8px;padding:11px 14px}
+.ctrl-row+.ctrl-row{border-top:1px solid var(--sep)}
+.ctrl-hint{font-size:12px;color:var(--lbl2);padding:6px 4px 0;line-height:1.4}
+.ctrl-hint.err{color:var(--red)}
+
+/* Inputs */
+.txt-input{background:transparent;border:none;color:var(--lbl);font-family:inherit;font-size:15px;flex:1 1 auto;min-width:0;outline:none;caret-color:var(--blue)}
+.txt-input::placeholder{color:var(--lbl3)}
+
+/* Buttons */
+.btn-sm{background:var(--fill);border:none;color:var(--blue);font-family:inherit;font-weight:600;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:opacity .15s}
+.btn-sm:hover{opacity:.75}.btn-sm:disabled{opacity:.3;cursor:default}
+.btn-rm{background:transparent;color:var(--red);font-size:20px;line-height:1;padding:1px 5px;border-radius:6px;border:none;cursor:pointer}
+.btn-rm:hover{background:rgba(255,69,58,.12)}
+.btn-add{display:flex;align-items:center;gap:8px;padding:11px 14px;color:var(--blue);font-size:15px;background:none;border:none;border-top:1px solid var(--sep);width:100%;cursor:pointer;text-align:left;font-family:inherit}
+.btn-add:hover{background:var(--fill2)}.btn-add:disabled{opacity:.3;cursor:default}
+
+/* Title rows inside the card */
+.title-row{display:flex;align-items:center;padding:11px 14px;gap:8px;border-top:1px solid var(--sep)}
+.title-row:first-child{border-top:none}
+
+/* Radius */
+.radius-row{display:flex;flex-direction:column;gap:10px;padding:12px 14px}
+.radius-label{display:flex;justify-content:space-between;font-size:15px}
+.radius-label span{color:var(--lbl2)}.radius-label b{color:var(--lbl);font-weight:600}
+input[type=range]{width:100%;accent-color:var(--blue);cursor:pointer;height:4px}
+
+/* State chips — pill style */
+.chip-wrap{display:flex;flex-wrap:wrap;gap:6px;padding:12px 14px}
+.s-chip{font-size:13px;font-weight:500;padding:5px 14px;border-radius:100px;background:var(--fill);color:var(--lbl2);border:none;cursor:pointer;user-select:none;transition:background .15s,color .15s}
+.s-chip.on{background:var(--blue);color:#fff}
+.s-chip:hover:not(.on){background:var(--fill2);color:var(--lbl)}
+
+/* Primary CTA */
+.btn-primary{display:block;width:calc(100% - 32px);margin:12px 16px 16px;background:var(--blue);color:#fff;border:none;font-family:inherit;font-weight:600;font-size:16px;letter-spacing:-.01em;padding:13px;border-radius:14px;cursor:pointer;transition:opacity .15s}
+.btn-primary:hover{opacity:.85}.btn-primary:disabled{background:var(--bg3);color:var(--lbl3);cursor:default;opacity:1}
+
+/* Results */
+.results{overflow-y:auto;flex:1 1 auto;padding:12px}
+.job{background:var(--bg2);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:background .15s;position:relative;overflow:hidden}
+.job::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--jc,var(--blue));border-radius:3px 0 0 3px}
+.job:hover{background:var(--bg3)}
+.job .co{font-weight:600;font-size:15px;color:var(--lbl);letter-spacing:-.01em}
+.job .ti{font-size:13px;color:var(--lbl2);margin:3px 0 6px;line-height:1.3}
+.job .meta{font-size:12px;color:var(--lbl3);display:flex;justify-content:space-between;gap:8px}
+.job .town{color:var(--lbl2)}.job .qtag{font-size:11px}
+
+/* Map overlays */
+.pin{font-family:-apple-system,system-ui,sans-serif;font-weight:700;font-size:13px;width:28px;height:28px;line-height:25px;text-align:center;border-radius:50%;background:#1c1c1e;color:#fff;border:2px solid var(--blue);box-shadow:0 2px 8px rgba(0,0,0,.45)}
+.pin.multi{background:var(--blue);color:#fff}
+.home-pin{width:18px;height:18px;border-radius:50%;background:var(--orange);border:2.5px solid #fff;box-shadow:0 0 0 4px rgba(255,159,10,.25),0 2px 8px rgba(0,0,0,.5)}
+.leaflet-popup-content-wrapper{background:var(--bg2);color:var(--lbl);border-radius:14px;border:1px solid var(--sep);box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.leaflet-popup-tip{background:var(--bg2)}
+.pop .pt{font-weight:600;font-size:14px;color:var(--lbl);border-bottom:1px solid var(--sep);padding-bottom:6px;margin-bottom:8px}
+.pop .pj{font-size:12px;margin-bottom:8px;line-height:1.4}
+.pop .pj b{color:var(--lbl);font-weight:600}.pop .pj .dim{color:var(--lbl2)}
+.pop a{color:var(--blue);font-size:12px;text-decoration:none}.pop a:hover{text-decoration:underline}
+.leaflet-popup-content{margin:12px 14px;max-height:230px;overflow-y:auto}
+.cty{background:transparent;border:none;box-shadow:none;color:rgba(255,255,255,.18);font-family:-apple-system,system-ui,sans-serif;font-weight:600;font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+
+footer{padding:8px 16px;border-top:1px solid var(--sep);font-size:11px;color:var(--lbl3);background:rgba(28,28,30,.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.msg{padding:16px;font-size:14px;color:var(--lbl2);line-height:1.5}.msg.err{color:var(--red)}
+@media(max-width:680px){.wrap{flex-direction:column}aside{flex:0 0 48%;max-width:none;border-left:none;border-top:1px solid var(--sep)}#map{flex:1 1 52%;height:auto}.controls{max-height:55%}}
+::-webkit-scrollbar{width:0}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Job Map</h1>
+  <div class="sub"><b id="count">–</b> results &middot; <b id="loccount">–</b> locations &middot; nearest first</div>
+</header>
+
+<div class="wrap">
+  <div id="map"></div>
+  <aside>
+
+    <div class="controls">
+
+      <!-- Home address -->
+      <div class="ctrl-group">
+        <div class="ctrl-group-label">Home</div>
+        <div class="ctrl-card">
+          <div class="ctrl-row">
+            <input type="text" id="home-input" class="txt-input" placeholder="Address, city, or zip&hellip;">
+            <button id="home-btn" class="btn-sm">Set</button>
+          </div>
+        </div>
+        <div id="home-hint" class="ctrl-hint"></div>
+      </div>
+
+      <!-- Job titles -->
+      <div class="ctrl-group">
+        <div class="ctrl-group-label">Job Titles <span class="n" id="title-count">0</span>/10</div>
+        <div class="ctrl-card">
+          <div id="title-list"></div>
+          <button id="title-add" class="btn-add">＋ &nbsp;Add title</button>
+        </div>
+      </div>
+
+      <!-- Radius -->
+      <div class="ctrl-group">
+        <div class="ctrl-group-label">Radius</div>
+        <div class="ctrl-card">
+          <div class="radius-row">
+            <div class="radius-label"><span>Miles from home</span><b id="radius-val">50 mi</b></div>
+            <input type="range" id="radius" min="10" max="300" step="10" value="50">
+          </div>
+        </div>
+      </div>
+
+      <!-- States in range -->
+      <div class="ctrl-group">
+        <div class="ctrl-group-label">States in Range</div>
+        <div id="state-chips" class="chip-wrap"></div>
+        <div id="state-hint" class="ctrl-hint">Set a home address to see nearby states.</div>
+      </div>
+
+      <!-- Search button -->
+      <button id="search-btn" class="btn-primary" disabled>Find Jobs</button>
+
+    </div><!-- /controls -->
+
+    <div class="results" id="results">
+      <div class="msg">Set home, add titles, select states, then tap Find Jobs.</div>
+    </div>
+
+  </aside>
+</div><!-- /wrap -->
+
+<footer>Live via JSearch / Google for Jobs &middot; results cached 1 h per query</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────
+const WORKER = "https://YOUR-WORKER.workers.dev"; // ← paste your worker base URL
+// ─────────────────────────────────────────────────────────────────
+
+// Per-title color palette (cycles if > 10 titles)
+const PALETTE = [
+  "#ff9f0a", // orange
+  "#0a84ff", // blue
+  "#30d158", // green
+  "#ff453a", // red
+  "#bf5af2", // purple
+  "#40c8e0", // teal
+  "#ff375f", // pink
+  "#ffd60a", // yellow
+  "#5e5ce6", // indigo
+  "#ac8e68", // brown
+];
+
+// US state centroids + rough half-width in miles (used for radius intersection)
+const STATES = [
+  {a:"AL",n:"Alabama",       lat:32.75,lng:-86.83,r:175},
+  {a:"AZ",n:"Arizona",       lat:34.30,lng:-111.09,r:200},
+  {a:"AR",n:"Arkansas",      lat:34.80,lng:-92.20, r:160},
+  {a:"CA",n:"California",    lat:37.25,lng:-119.50,r:340},
+  {a:"CO",n:"Colorado",      lat:39.00,lng:-105.55,r:200},
+  {a:"CT",n:"Connecticut",   lat:41.65,lng:-72.69, r:50},
+  {a:"DE",n:"Delaware",      lat:39.10,lng:-75.52, r:50},
+  {a:"FL",n:"Florida",       lat:28.65,lng:-82.50, r:280},
+  {a:"GA",n:"Georgia",       lat:32.70,lng:-83.45, r:185},
+  {a:"ID",n:"Idaho",         lat:44.45,lng:-114.14,r:230},
+  {a:"IL",n:"Illinois",      lat:40.00,lng:-89.20, r:220},
+  {a:"IN",n:"Indiana",       lat:39.85,lng:-86.26, r:150},
+  {a:"IA",n:"Iowa",          lat:42.00,lng:-93.21, r:190},
+  {a:"KS",n:"Kansas",        lat:38.50,lng:-98.38, r:210},
+  {a:"KY",n:"Kentucky",      lat:37.40,lng:-85.30, r:225},
+  {a:"LA",n:"Louisiana",     lat:30.85,lng:-91.90, r:190},
+  {a:"ME",n:"Maine",         lat:45.40,lng:-69.00, r:200},
+  {a:"MD",n:"Maryland",      lat:39.05,lng:-76.64, r:110},
+  {a:"MA",n:"Massachusetts", lat:42.25,lng:-71.53, r:100},
+  {a:"MI",n:"Michigan",      lat:44.35,lng:-85.41, r:275},
+  {a:"MN",n:"Minnesota",     lat:46.28,lng:-94.30, r:265},
+  {a:"MS",n:"Mississippi",   lat:32.74,lng:-89.67, r:170},
+  {a:"MO",n:"Missouri",      lat:38.46,lng:-92.29, r:200},
+  {a:"MT",n:"Montana",       lat:46.88,lng:-110.36,r:315},
+  {a:"NE",n:"Nebraska",      lat:41.49,lng:-99.90, r:240},
+  {a:"NV",n:"Nevada",        lat:39.33,lng:-116.85,r:280},
+  {a:"NH",n:"New Hampshire", lat:43.97,lng:-71.57, r:100},
+  {a:"NJ",n:"New Jersey",    lat:40.06,lng:-74.41, r:90},
+  {a:"NM",n:"New Mexico",    lat:34.41,lng:-106.11,r:240},
+  {a:"NY",n:"New York",      lat:42.94,lng:-75.53, r:220},
+  {a:"NC",n:"North Carolina",lat:35.50,lng:-79.39, r:250},
+  {a:"ND",n:"North Dakota",  lat:47.45,lng:-100.47,r:220},
+  {a:"OH",n:"Ohio",          lat:40.29,lng:-82.79, r:185},
+  {a:"OK",n:"Oklahoma",      lat:35.50,lng:-97.50, r:240},
+  {a:"OR",n:"Oregon",        lat:44.57,lng:-122.07,r:270},
+  {a:"PA",n:"Pennsylvania",  lat:40.59,lng:-77.21, r:190},
+  {a:"RI",n:"Rhode Island",  lat:41.68,lng:-71.51, r:35},
+  {a:"SC",n:"South Carolina",lat:33.84,lng:-80.90, r:160},
+  {a:"SD",n:"South Dakota",  lat:44.37,lng:-100.24,r:235},
+  {a:"TN",n:"Tennessee",     lat:35.86,lng:-86.35, r:230},
+  {a:"TX",n:"Texas",         lat:31.47,lng:-99.33, r:430},
+  {a:"UT",n:"Utah",          lat:39.32,lng:-111.09,r:210},
+  {a:"VT",n:"Vermont",       lat:44.07,lng:-72.67, r:80},
+  {a:"VA",n:"Virginia",      lat:37.53,lng:-78.86, r:215},
+  {a:"WA",n:"Washington",    lat:47.38,lng:-120.45,r:235},
+  {a:"WV",n:"West Virginia", lat:38.64,lng:-80.62, r:140},
+  {a:"WI",n:"Wisconsin",     lat:44.27,lng:-89.62, r:215},
+  {a:"WY",n:"Wyoming",       lat:42.76,lng:-107.55,r:250},
+  {a:"DC",n:"District of Columbia",lat:38.91,lng:-77.02,r:15},
+];
+
+(function () {
+
+  function miles(a, b) {
+    const R = 3958.8, r = Math.PI / 180;
+    const dLat = (b[0] - a[0]) * r, dLng = (b[1] - a[1]) * r;
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  }
+
+  function esc(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  async function geocodeAddress(addr) {
+    const u = new URL("https://nominatim.openstreetmap.org/search");
+    u.searchParams.set("q", addr + " USA");
+    u.searchParams.set("format", "json");
+    u.searchParams.set("limit", "1");
+    const res = await fetch(u, { headers: { "User-Agent": "jobs-map/1.0" } });
+    const arr = await res.json();
+    if (arr && arr[0]) {
+      return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon), display: arr[0].display_name };
+    }
+    return null;
+  }
+
+  // States whose bounding area (centroid ± r) intersects the search radius
+  function statesInRange(home, radiusMi) {
+    return STATES.filter(s => miles([home.lat, home.lng], [s.lat, s.lng]) <= radiusMi + s.r);
+  }
+
+  async function init() {
+    // ── map setup ────────────────────────────────────────────────
+    const US_BOUNDS = L.latLngBounds([[22, -128], [52, -62]]);
+    const map = L.map("map", {
+      zoomControl: true, attributionControl: false,
+      minZoom: 4,
+      maxBounds: US_BOUNDS,
+      maxBoundsViscosity: 0.85,
+    });
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: "&copy; OSM &copy; CARTO", subdomains: "abcd", maxZoom: 19,
+    }).addTo(map);
+    map.fitBounds(US_BOUNDS); // initial contiguous-US view
+
+    // US state outlines from CDN (graceful fallback)
+    try {
+      const geo = await (await fetch(
+        "https://cdn.jsdelivr.net/gh/PublicaMundi/MappingAPI@master/data/geojson/us-states.json"
+      )).json();
+      const stateLayer = L.geoJSON(geo, {
+        style: { color: "rgba(84,84,88,.5)", weight: 1, fillColor: "#1c1c1e", fillOpacity: 0.2 },
+      }).addTo(map);
+      stateLayer.eachLayer(function (l) {
+        const n = l.feature && l.feature.properties && l.feature.properties.name;
+        if (n) l.bindTooltip(n, { permanent: true, direction: "center", className: "cty", opacity: 1 });
+      });
+    } catch (e) { /* state outlines unavailable offline */ }
+
+    setTimeout(() => map.invalidateSize(), 150);
+    window.addEventListener("resize", () => map.invalidateSize());
+
+    // ── state ────────────────────────────────────────────────────
+    let HOME = null;
+    let maxMiles = 50;
+    let JOBS = [];
+    let titleColors = {};
+    let markers = [];
+    let homeMarker = null;
+    let radiusCircle = null;
+    const activeStates = new Set();
+    const userDeselected = new Set(); // states explicitly toggled off by user
+
+    const homeIcon = L.divIcon({
+      html: '<div class="home-pin"></div>',
+      className: "", iconSize: [18, 18], iconAnchor: [9, 9],
+    });
+
+    const keyOf = j => `${j.lat.toFixed(3)},${j.lng.toFixed(3)}`;
+
+    // ── radius circle ────────────────────────────────────────────
+    function updateRadiusCircle() {
+      if (radiusCircle) map.removeLayer(radiusCircle);
+      radiusCircle = null;
+      if (!HOME) return;
+      radiusCircle = L.circle([HOME.lat, HOME.lng], {
+        radius: maxMiles * 1609.34,
+        color: "#0a84ff", weight: 1, dashArray: "5 5",
+        fillColor: "#0a84ff", fillOpacity: 0.04,
+      }).addTo(map);
+    }
+
+    // ── state chips ──────────────────────────────────────────────
+    function updateStateChips() {
+      const wrap = document.getElementById("state-chips");
+      const hint = document.getElementById("state-hint");
+      if (!HOME) {
+        wrap.innerHTML = "";
+        hint.textContent = "Set a home address to see nearby states.";
+        return;
+      }
+      const nearby = statesInRange(HOME, maxMiles);
+
+      // Clear states that left range from userDeselected (reset their preference)
+      for (const n of [...userDeselected]) {
+        if (!nearby.find(s => s.n === n)) userDeselected.delete(n);
+      }
+
+      activeStates.clear();
+      wrap.innerHTML = "";
+      hint.textContent = "";
+
+      if (!nearby.length) {
+        hint.textContent = "No states within " + maxMiles + " mi of home.";
+        return;
+      }
+
+      nearby.sort((a, b) => a.n.localeCompare(b.n)).forEach(s => {
+        const isOn = !userDeselected.has(s.n);
+        if (isOn) activeStates.add(s.n);
+        const chip = document.createElement("div");
+        chip.className = "s-chip" + (isOn ? " on" : "");
+        chip.textContent = s.a;
+        chip.title = s.n;
+        chip.onclick = function () {
+          if (activeStates.has(s.n)) {
+            activeStates.delete(s.n); userDeselected.add(s.n); chip.classList.remove("on");
+          } else {
+            activeStates.add(s.n); userDeselected.delete(s.n); chip.classList.add("on");
+          }
+        };
+        wrap.appendChild(chip);
+      });
+    }
+
+    // ── set home ─────────────────────────────────────────────────
+    async function setHome(addr) {
+      const hintEl = document.getElementById("home-hint");
+      const btn = document.getElementById("home-btn");
+      hintEl.textContent = "Geocoding…";
+      hintEl.className = "ctrl-hint";
+      btn.disabled = true;
+      try {
+        const g = await geocodeAddress(addr);
+        if (!g) { hintEl.textContent = "Address not found."; hintEl.className = "ctrl-hint err"; return; }
+        HOME = g;
+        hintEl.textContent = g.display.split(",").slice(0, 3).join(",");
+
+        if (homeMarker) map.removeLayer(homeMarker);
+        homeMarker = L.marker([HOME.lat, HOME.lng], { icon: homeIcon, zIndexOffset: 1000 })
+          .addTo(map)
+          .bindPopup('<b style="color:var(--hot)">Home</b><br><span style="font-size:10px;color:var(--dim)">'
+            + esc(g.display.split(",").slice(0, 2).join(",")) + "</span>");
+
+        updateRadiusCircle();
+        updateStateChips();
+        map.flyTo([HOME.lat, HOME.lng], 9, { duration: 0.8 });
+
+        // recompute distances for any already-loaded jobs
+        JOBS = JOBS.map(j => Object.assign({}, j, {
+          mi: j.lat != null ? miles([HOME.lat, HOME.lng], [j.lat, j.lng]) : null,
+        }));
+        renderResults();
+        document.getElementById("search-btn").disabled = false;
+      } catch (e) {
+        hintEl.textContent = "Geocode error: " + String(e);
+        hintEl.className = "ctrl-hint err";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ── render results ───────────────────────────────────────────
+    function renderResults() {
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+
+      const shown = JOBS.filter(j =>
+        j.lat && j.lng && (j.mi == null || j.mi <= maxMiles)
+      );
+
+      const byKey = {};
+      shown.forEach(j => { (byKey[keyOf(j)] = byKey[keyOf(j)] || []).push(j); });
+
+      Object.keys(byKey).forEach(key => {
+        const js = byKey[key];
+        const [lat, lng] = key.split(",").map(Number);
+        const colors = [...new Set(js.map(j => titleColors[j.query] || "#e8b339"))];
+        const pinColor = colors.length === 1 ? colors[0] : "#e8b339";
+        const icon = L.divIcon({
+          html: `<div class="pin ${js.length > 1 ? "multi" : ""}" style="border-color:${pinColor}${js.length > 1 ? ";background:" + pinColor : ""}">${js.length}</div>`,
+          className: "", iconSize: [26, 26], iconAnchor: [13, 13],
+        });
+        const label = (js[0].town ? js[0].town + ", " + js[0].state : js[0].state) || key;
+        const pop =
+          '<div class="pop"><div class="pt">' + esc(label) + " &middot; " + js.length + "</div>" +
+          js.map(j =>
+            '<div class="pj"><b style="color:' + (titleColors[j.query] || "#e8b339") + '">' + esc(j.co) + "</b><br>" +
+            "<span>" + esc(j.ti) + "</span><br>" +
+            (j.mi != null ? '<span class="dim">' + Math.round(j.mi) + " mi from home</span><br>" : "") +
+            '<a href="' + esc(j.url) + '" target="_blank" rel="noopener">apply &#x2197;</a></div>'
+          ).join("") + "</div>";
+        markers.push(
+          L.marker([lat, lng], { icon }).addTo(map).bindPopup(pop, { minWidth: 210, maxWidth: 270 })
+        );
+      });
+
+      const resultsEl = document.getElementById("results");
+      resultsEl.innerHTML = "";
+
+      if (!shown.length && JOBS.length) {
+        resultsEl.innerHTML = '<div class="msg">No results within ' + maxMiles + ' mi. Try a larger radius.</div>';
+        document.getElementById("count").textContent = 0;
+        document.getElementById("loccount").textContent = 0;
+        return;
+      }
+
+      shown.slice().sort((a, b) => (a.mi ?? 9999) - (b.mi ?? 9999)).forEach(j => {
+        const d = document.createElement("div");
+        d.className = "job";
+        d.style.setProperty("--jc", titleColors[j.query] || "#e8b339");
+        const loc = j.town ? j.town + ", " + j.state : (j.state || "");
+        d.innerHTML =
+          '<div class="co">' + esc(j.co) + "</div>" +
+          '<div class="ti">' + esc(j.ti) + "</div>" +
+          '<div class="meta"><span class="town">' + esc(loc) + "</span>" +
+          '<span class="qtag" style="color:' + (titleColors[j.query] || "#e8b339") + '">' +
+          esc(j.query) + (j.mi != null ? " &middot; " + Math.round(j.mi) + "mi" : "") + "</span></div>";
+        d.onclick = function () {
+          const k = keyOf(j);
+          const mk = markers.find(m => {
+            const ll = m.getLatLng();
+            return ll.lat.toFixed(3) + "," + ll.lng.toFixed(3) === k;
+          });
+          if (!mk) return;
+          // Pulse the pin without moving the map
+          const el = mk.getElement();
+          if (el) {
+            el.style.transition = "transform .15s";
+            el.style.transform = "scale(1.7)";
+            setTimeout(() => { el.style.transform = "scale(1)"; }, 300);
+          }
+          mk.openPopup();
+        };
+        resultsEl.appendChild(d);
+      });
+
+      document.getElementById("count").textContent = shown.length;
+      document.getElementById("loccount").textContent = Object.keys(byKey).length;
+    }
+
+    // ── search ───────────────────────────────────────────────────
+    async function doSearch() {
+      const searchBtn = document.getElementById("search-btn");
+      const resultsEl = document.getElementById("results");
+
+      if (!HOME) { document.getElementById("home-hint").textContent = "Set home first."; return; }
+
+      const titles = [...document.querySelectorAll(".title-input")]
+        .map(i => i.value.trim()).filter(Boolean);
+      if (!titles.length) {
+        resultsEl.innerHTML = '<div class="msg err">Add at least one job title.</div>'; return;
+      }
+
+      const states = [...activeStates];
+      if (!states.length) {
+        resultsEl.innerHTML = '<div class="msg err">No states selected &mdash; adjust radius or toggle states.</div>'; return;
+      }
+
+      if (WORKER.includes("YOUR-WORKER")) {
+        resultsEl.innerHTML =
+          '<div class="msg">Worker not deployed yet. Deploy <code>worker/worker.js</code> ' +
+          'to Cloudflare Workers, then paste your URL into the <b>WORKER</b> constant at the top of this file.</div>';
+        searchBtn.disabled = false;
+        return;
+      }
+
+      // Assign stable colors to titles (by index in current input order)
+      titleColors = {};
+      titles.forEach((t, i) => { titleColors[t] = PALETTE[i % PALETTE.length]; });
+
+      searchBtn.disabled = true;
+      resultsEl.innerHTML = '<div class="msg">Searching ' + titles.length + ' title(s) across ' +
+        states.length + ' state(s)&hellip;</div>';
+
+      try {
+        const u = new URL(WORKER + "/search");
+        u.searchParams.set("q", titles.join(","));
+        u.searchParams.set("states", states.join(","));
+        const blob = await (await fetch(u)).json();
+        if (blob.error) throw new Error(blob.error);
+
+        JOBS = blob.jobs.map(j => Object.assign({}, j, {
+          mi: j.lat != null ? miles([HOME.lat, HOME.lng], [j.lat, j.lng]) : null,
+        }));
+        renderResults();
+
+        // Fit map to results (+ home)
+        const pts = JOBS.filter(j => j.lat && j.lng).map(j => L.circleMarker([j.lat, j.lng]));
+        if (pts.length) {
+          pts.push(L.circleMarker([HOME.lat, HOME.lng]));
+          map.fitBounds(L.featureGroup(pts).getBounds(), { padding: [40, 40] });
+        }
+      } catch (e) {
+        resultsEl.innerHTML = '<div class="msg err">Search failed &mdash; ' + esc(String(e)) + "</div>";
+      } finally {
+        searchBtn.disabled = false;
+      }
+    }
+
+    // ── title management ─────────────────────────────────────────
+    const titleList = document.getElementById("title-list");
+
+    function updateTitleCount() {
+      const n = titleList.querySelectorAll(".title-row").length;
+      document.getElementById("title-count").textContent = n;
+      document.getElementById("title-add").disabled = n >= 10;
+    }
+
+    function addTitleRow(value) {
+      if (titleList.querySelectorAll(".title-row").length >= 10) return;
+      const row = document.createElement("div");
+      row.className = "title-row";
+      row.innerHTML =
+        '<input type="text" class="txt-input title-input" placeholder="type job title here">' +
+        '<button class="btn-rm" title="Remove">&times;</button>';
+      if (value) row.querySelector(".title-input").value = value;
+      row.querySelector(".btn-rm").onclick = () => { row.remove(); updateTitleCount(); };
+      row.querySelector(".title-input").addEventListener("keydown", e => {
+        if (e.key === "Enter") doSearch();
+      });
+      titleList.appendChild(row);
+      updateTitleCount();
+      row.querySelector(".title-input").focus();
+    }
+
+    document.getElementById("title-add").addEventListener("click", () => addTitleRow());
+
+    // ── radius slider ────────────────────────────────────────────
+    document.getElementById("radius").addEventListener("input", function () {
+      maxMiles = +this.value;
+      document.getElementById("radius-val").textContent = maxMiles + " mi";
+      updateRadiusCircle();
+      if (HOME) updateStateChips();
+      renderResults();
+    });
+
+    // ── address input ─────────────────────────────────────────────
+    document.getElementById("home-btn").addEventListener("click", () => {
+      const v = document.getElementById("home-input").value.trim();
+      if (v) setHome(v);
+    });
+    document.getElementById("home-input").addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        const v = e.target.value.trim();
+        if (v) setHome(v);
+      }
+    });
+
+    // ── search button ────────────────────────────────────────────
+    document.getElementById("search-btn").addEventListener("click", doSearch);
+
+    // ── click map to set home ────────────────────────────────────
+    map.on("contextmenu", function (e) {
+      // right-click on map sets home to that coordinate
+      HOME = { lat: e.latlng.lat, lng: e.latlng.lng, display: "" };
+      if (homeMarker) map.removeLayer(homeMarker);
+      homeMarker = L.marker([HOME.lat, HOME.lng], { icon: homeIcon, zIndexOffset: 1000 })
+        .addTo(map)
+        .bindPopup('<b style="color:var(--hot)">Home</b><br><span style="font-size:10px;color:var(--dim)">'
+          + HOME.lat.toFixed(4) + ", " + HOME.lng.toFixed(4) + "</span>");
+      document.getElementById("home-input").value = HOME.lat.toFixed(5) + ", " + HOME.lng.toFixed(5);
+      document.getElementById("home-hint").textContent = "Placed at " + HOME.lat.toFixed(4) + ", " + HOME.lng.toFixed(4);
+      document.getElementById("home-hint").className = "ctrl-hint";
+      updateRadiusCircle();
+      updateStateChips();
+      JOBS = JOBS.map(j => Object.assign({}, j, {
+        mi: j.lat != null ? miles([HOME.lat, HOME.lng], [j.lat, j.lng]) : null,
+      }));
+      renderResults();
+      document.getElementById("search-btn").disabled = false;
+    });
+
+    // ── initial state ─────────────────────────────────────────────
+    addTitleRow(); // start with one blank title row
+  }
+
+  if (document.readyState === "complete" || document.readyState === "interactive") setTimeout(init, 1);
+  else window.addEventListener("load", init);
+})();
+</script>
+</body>
+</html>
