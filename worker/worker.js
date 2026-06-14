@@ -50,10 +50,19 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
+import project from "../project.json";
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+    // Portfolio schema doc (read cross-origin by the portfolio site)
+    if (url.pathname === "/project.json") {
+      return new Response(JSON.stringify(project), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
 
     if (url.pathname === "/health") {
       const blob = await readCache(env);
