@@ -172,7 +172,7 @@ footer{padding:8px 16px;border-top:1px solid var(--sep);font-size:11px;color:var
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────
-const WORKER = "https://YOUR-WORKER.workers.dev"; // ← paste your worker base URL
+const WORKER = location.origin; // same Worker serves this page and the /search + /jobs.json API
 // ─────────────────────────────────────────────────────────────────
 
 // Per-title color palette (cycles if > 10 titles)

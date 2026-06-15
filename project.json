@@ -1,7 +1,7 @@
 {
   "name": "Job Map",
-  "description": "Interactive Leaflet map of live job postings, pulled and geocoded from the JSearch API through a key-protected Cloudflare Worker with nightly caching. Browse openings geographically and open the source listing in one click.",
+  "description": "I made this during a job search to check commutability of different in-office jobs. This interactive Leaflet map pulls live geocoded job postings from the JSearch API through a key-protected Cloudflare Worker with nightly caching. Browse openings geographically and open the source listing in one click.",
   "link": "https://jobs-map.example.workers.dev",
   "repo": "https://github.com/waf5472/jobs-map",
-  "tags": ["Leaflet", "Cloudflare Worker", "JSearch API"]
+  "tags": ["Claude Code", "Cloudflare Worker", "React", "JS"]
 }

@@ -2,6 +2,13 @@ name = "jobs-worker"
 main = "worker.js"
 compatibility_date = "2025-06-01"
 
+# Serve the Leaflet map UI (public/index.html) from the same Worker that holds
+# the JSearch key — so the deployment URL opens the app and same-origin /search
+# + /jobs.json calls need no CORS.
+[assets]
+directory = "../public"
+binding = "ASSETS"
+
 # KV cache (results + geocode lookups). Create it, then paste the id below:
 #   npx wrangler kv namespace create JOBS_KV
 [[kv_namespaces]]

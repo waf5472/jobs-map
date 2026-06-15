@@ -157,7 +157,8 @@ export default {
       return json(blob);
     }
 
-    return new Response("jobs-worker: GET /jobs.json", { headers: CORS });
+    // Everything else → the static map UI (public/index.html via the assets binding).
+    return env.ASSETS.fetch(request);
   },
 
   // Cron trigger -> nightly refresh
