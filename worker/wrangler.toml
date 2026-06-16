@@ -2,6 +2,9 @@ name = "jobs-worker"
 main = "worker.js"
 compatibility_date = "2025-06-01"
 
+# Custom domain — portfolio apps live at <project-name>.wesley-fletcher.com
+routes = [{ pattern = "jobs-map.wesley-fletcher.com", custom_domain = true }]
+
 # Serve the Leaflet map UI (public/index.html) from the same Worker that holds
 # the JSearch key — so the deployment URL opens the app and same-origin /search
 # + /jobs.json calls need no CORS.
@@ -13,7 +16,7 @@ binding = "ASSETS"
 #   npx wrangler kv namespace create JOBS_KV
 [[kv_namespaces]]
 binding = "JOBS_KV"
-id = "PASTE_YOUR_KV_NAMESPACE_ID_HERE"
+id = "68d5c4330a08422eae3687896dd0170d"
 
 # Nightly refresh at 07:00 UTC (~2-3am ET). Adjust or remove.
 [triggers]
