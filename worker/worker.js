@@ -37,7 +37,7 @@ const TITLES = [
   { q: "Manufacturing Engineering Manager",    fam: "mgr", rx: /(manufacturing|engineering) manager/i },
 ];
 
-const NUM_PAGES   = 1;        // JSearch pages per query (10 results/page). Raise for depth, costs quota.
+const NUM_PAGES   = 3;        // JSearch pages per query (10 results/page). Raise for depth, costs quota.
 const DATE_POSTED = "month";  // all | today | 3days | week | month
 const COUNTRY     = "us";
 const CACHE_TTL_S = 60 * 60 * 24; // serve cache up to 24h
@@ -113,7 +113,7 @@ export default {
       }
       const titles = qParam.split(",").map(t => t.trim()).filter(Boolean).slice(0, 10);
       const states = statesParam.split(",").map(s => s.trim()).filter(Boolean);
-      const pages  = Math.min(parseInt(url.searchParams.get("pages") || "1"), 3);
+      const pages  = Math.min(parseInt(url.searchParams.get("pages") || "3"), 3);
 
       // Cache key — sorted so order doesn't affect cache hits
       const ck = "srch:" + titles.slice().sort().join("|") + "@" + states.slice().sort().join("|") + ":" + pages;
