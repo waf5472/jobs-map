@@ -2,16 +2,16 @@
  * jobs-worker — Cloudflare Worker
  * Pulls live listings from JSearch (Google-for-Jobs aggregation: LinkedIn, Indeed,
  * ZipRecruiter, Workday, etc.), normalises them into the schema the map consumes,
- * classifies each into a title "family", dedupes, geocodes any gaps, caches in KV,
- * and serves jobs.json with CORS.
+ * dedupes, geocodes any gaps, caches in KV, and serves them with CORS.
+ *
+ * Fully on-demand: the map UI drives every pull via /search, and results are
+ * cached per-query in KV for an hour. There is no scheduled/batch path — JSearch
+ * is only hit when a visitor actually searches.
  *
  * Endpoints:
- *   GET /jobs.json            -> cached results (fast, what the map fetches)
- *   GET /jobs.json?refresh=1  -> force a live re-pull (costs API quota)
- *   GET /health               -> {ok, count, updated}
+ *   GET /search?q=…&states=…  -> live search the map UI calls (per-query KV cache)
  *   GET /debug                -> one raw JSearch result + field-presence check
- *
- * Also runs on a cron trigger (see wrangler.toml) to refresh the cache nightly.
+ *   GET /project.json         -> portfolio schema doc
  *
  * Secrets / bindings (set via wrangler — see README):
  *   JSEARCH_KEY   (secret)  RapidAPI key for JSearch
@@ -19,29 +19,8 @@
  */
 
 // ----------------------------- CONFIG -----------------------------
-// Add a state by adding a string. Multi-state = edit this array. That's the whole change.
-// Cost scales as TITLES.length * LOCATIONS.length * NUM_PAGES API calls per refresh.
-const LOCATIONS = ["Massachusetts"]; // e.g. ["Massachusetts","New Hampshire","Rhode Island","Connecticut"]
-
-// Each title: the search phrase (q), the family it maps to (fam), and a relevance
-// regex the returned job_title must match (gates out JSearch's loose free-text noise).
-const TITLES = [
-  { q: "Senior NPI Engineer",                  fam: "npi", rx: /\bnpi\b|new product introduction/i },
-  { q: "Senior NPI Manufacturing Engineer",    fam: "npi", rx: /\bnpi\b|new product introduction/i },
-  { q: "Senior Hardware Engineer",             fam: "hw",  rx: /hardware (design|engineer)|electrical engineer/i },
-  { q: "Senior Product Development Engineer",  fam: "pde", rx: /product development engineer|r&?d engineer/i },
-  { q: "Staff Manufacturing Engineer",         fam: "mfg", rx: /manufacturing engineer|mfg engineer/i },
-  { q: "Senior Manufacturing Engineer",        fam: "mfg", rx: /manufacturing engineer|mfg engineer/i },
-  { q: "Senior Supplier Quality Engineer",     fam: "sup", rx: /supplier (quality|development|engineer)/i },
-  { q: "NPI Program Manager",                  fam: "ppm", rx: /(npi|product|program).*manager|manager.*(npi|program)|sourcing manager/i },
-  { q: "Manufacturing Engineering Manager",    fam: "mgr", rx: /(manufacturing|engineering) manager/i },
-];
-
-const NUM_PAGES   = 3;        // JSearch pages per query (10 results/page). Raise for depth, costs quota.
 const DATE_POSTED = "month";  // all | today | 3days | week | month
 const COUNTRY     = "us";
-const CACHE_TTL_S = 60 * 60 * 24; // serve cache up to 24h
-const KEY_RESULTS = "results:current";
 // ------------------------------------------------------------------
 
 const CORS = {
@@ -64,18 +43,14 @@ export default {
       });
     }
 
-    if (url.pathname === "/health") {
-      const blob = await readCache(env);
-      return json({ ok: true, count: blob ? blob.jobs.length : 0, updated: blob ? blob.updated : null });
-    }
-
     if (url.pathname === "/debug") {
-      // Hit /debug after deploying to verify JSearch field names match normalize()
+      // Hit /debug after deploying to verify JSearch field names match normalizeOpen()
       if (!env.JSEARCH_KEY) return json({ error: "JSEARCH_KEY secret not set" });
+      const sampleQuery = "Senior Manufacturing Engineer in Massachusetts";
       try {
-        const data = await jsearch(env, `${TITLES[0].q} in ${LOCATIONS[0]}`, 1);
+        const data = await jsearch(env, sampleQuery, 1);
         const sample = data?.data?.[0] ?? null;
-        // These are the fields normalize() relies on — all should show true
+        // These are the fields normalizeOpen() relies on — all should show true
         const fieldCheck = sample ? {
           job_id:                     sample.job_id !== undefined,
           employer_name:              sample.employer_name !== undefined,
@@ -91,7 +66,7 @@ export default {
           job_posted_at_datetime_utc: sample.job_posted_at_datetime_utc !== undefined,
         } : null;
         return json({
-          query: `${TITLES[0].q} in ${LOCATIONS[0]}`,
+          query: sampleQuery,
           api_status: data?.status,
           result_count: data?.data?.length ?? 0,
           fieldCheck,
@@ -147,60 +122,12 @@ export default {
       return json(blob);
     }
 
-    if (url.pathname === "/jobs.json") {
-      if (url.searchParams.get("refresh") === "1") {
-        const blob = await refresh(env);
-        return json(blob);
-      }
-      let blob = await readCache(env);
-      if (!blob) blob = await refresh(env); // cold cache
-      return json(blob);
-    }
-
     // Everything else → the static map UI (public/index.html via the assets binding).
     return env.ASSETS.fetch(request);
-  },
-
-  // Cron trigger -> nightly refresh
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(refresh(env));
   },
 };
 
 // --------------------------- core ---------------------------------
-async function refresh(env) {
-  const seen = new Map(); // job_id -> normalised job (dedupe)
-  for (const loc of LOCATIONS) {
-    for (const t of TITLES) {
-      for (let page = 1; page <= NUM_PAGES; page++) {
-        let data;
-        try {
-          data = await jsearch(env, `${t.q} in ${loc}`, page);
-        } catch (e) {
-          // soft-fail one query, keep going
-          console.log("jsearch error", t.q, loc, page, String(e));
-          continue;
-        }
-        const rows = (data && data.data) || [];
-        for (const r of rows) {
-          const id = r.job_id || `${r.employer_name}|${r.job_title}|${r.job_city}`;
-          if (seen.has(id)) continue;
-          // relevance gate: title must look like the family we asked for
-          if (t.rx && !t.rx.test(r.job_title || "")) continue;
-          // location gate: keep only target states (JSearch leaks nearby/remote)
-          if (!inTargetState(r, loc)) continue;
-          const norm = await normalize(r, t.fam, env);
-          if (norm) seen.set(id, norm);
-        }
-      }
-    }
-  }
-  const jobs = [...seen.values()].sort((a, b) => (b.posted || 0) - (a.posted || 0));
-  const blob = { updated: new Date().toISOString(), count: jobs.length, jobs };
-  await env.JOBS_KV.put(KEY_RESULTS, JSON.stringify(blob), { expirationTtl: CACHE_TTL_S * 2 });
-  return blob;
-}
-
 async function jsearch(env, query, page) {
   const u = new URL("https://jsearch.p.rapidapi.com/search");
   u.searchParams.set("query", query);
@@ -218,29 +145,8 @@ async function jsearch(env, query, page) {
   return res.json();
 }
 
-async function normalize(r, fam, env) {
-  const town = r.job_city || r.job_state || "";
-  const state = r.job_state || "";
-  let lat = numOrNull(r.job_latitude);
-  let lng = numOrNull(r.job_longitude);
-  if (lat == null || lng == null) {
-    const g = await geocode(env, [r.job_city, r.job_state].filter(Boolean).join(", "));
-    if (g) { lat = g.lat; lng = g.lng; }
-  }
-  if (lat == null || lng == null) return null; // can't place it -> drop
-  return {
-    co: r.employer_name || "Unknown",
-    ti: r.job_title || "",
-    town, state,
-    fam,
-    url: r.job_apply_link || r.job_google_link || "",
-    publisher: r.job_publisher || "",
-    posted: r.job_posted_at_timestamp || (r.job_posted_at_datetime_utc ? Date.parse(r.job_posted_at_datetime_utc) / 1000 : null),
-    lat, lng,
-  };
-}
-
-// normalize() variant for /search — no fam/rx, stores the title query that found it
+// normalize a raw JSearch row into the schema the map consumes; stores the
+// title query that found it. Returns null if it can't be placed on the map.
 async function normalizeOpen(r, titleQuery, env) {
   const town = r.job_city || "";
   const state = r.job_state || "";
@@ -297,10 +203,6 @@ async function geocode(env, place) {
 }
 
 // ------------------------- helpers --------------------------------
-async function readCache(env) {
-  const s = await env.JOBS_KV.get(KEY_RESULTS);
-  return s ? JSON.parse(s) : null;
-}
 function json(obj) {
   return new Response(JSON.stringify(obj), {
     headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=900", ...CORS },
